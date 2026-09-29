@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>pixel-world v5.2 — restaurado sin lo feo</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; background: #010603;
+    font-family: "Cascadia Mono", Consolas, Menlo, monospace; }
+  #wrap { height: 100vh; width: 100vw; display: flex; flex-direction: column; }
+  #topbar { display: flex; gap: 18px; align-items: center; padding: 6px 14px;
+    font-size: 12px; letter-spacing: 1px; z-index: 10;
+    background: rgba(0,0,0,.5); color: #d8ffd8; white-space: nowrap; }
+  #topbar b { letter-spacing: 2px; }
+  #screen { flex: 1; position: relative; overflow: hidden; cursor: crosshair; background: #010603;
+    display: flex; align-items: center; justify-content: center; }
+  #cv { display: block; image-rendering: pixelated; }
+  #scan { position: absolute; inset: 0; pointer-events: none; z-index: 3; opacity: .10;
+    background: repeating-linear-gradient(0deg, #000 0 1px, transparent 1px 3px); }
+  #cross { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+    font-size: 15px; pointer-events: none; opacity: .9; z-index: 4; color: #fff; }
+  #toast { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+    font-size: 12px; padding: 4px 12px; border-radius: 4px; z-index: 4;
+    background: rgba(0,0,0,.55); color: #d8ffd8; pointer-events: none; white-space: nowrap; }
+  #overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,.82); color: #d8ffd8; font-size: 14px; line-height: 1.8;
+    text-align: center; cursor: pointer; z-index: 5; padding: 20px; }
+  #overlay.hidden { display: none; }
+  #overlay .big { font-size: 26px; letter-spacing: 3px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="topbar"><span><b>PIXEL-WORLD v5.2</b> · pueblito</span><span id="fps">…</span><span id="pos"></span><span id="phase"></span></div>
+  <div id="screen">
+    <canvas id="cv"></canvas>
+    <div id="scan"></div>
+    <div id="cross">+</div>
+    <div id="toast">WASD moverse · mouse mirar · ESPACIO saltar · SHIFT correr · N día/noche · H auto</div>
+    <div id="overlay"><div>
+      <div class="big">PIXEL-WORLD v5.2</div>
+      <div>casas con techo rojo · lago · bosque · plaza · faroles</div><br>
+      <div><b>CLICK PARA JUGAR</b></div><br>
+      <div>WASD + mouse · ESPACIO salta · SHIFT corre · N noche · F scanlines · -/= detalle</div>
+    </div></div>
+  </div>
+</div>
+<script>
+// ================= MUNDO DE BLOQUES =================
+// 0 aire 1 pasto 2 tierra 3 piedra 4 arena 5 agua 6 madera 7 techo 8 ventana
+// 9 tronco 10 hojas 11 poste 12 farol
+const WX = 64, WY = 14, WZ = 64, WL = 3;
+const W = new Uint8Array(WX * WY * WZ);
+const idx = (x, y, z) => (y * WZ + z) * WX + x;
+function getB(x, y, z) {
+  if (y < 0) return 1;
+  if (x < 0 || z < 0 || x >= WX || z >= WZ || y >= WY) return 0;
+  return W[idx(x, y, z)];
+}
+function setB(x, y, z, b) { if (x >= 0 && z >= 0 && y >= 0 && x < WX && z < WZ && y < WY) W[idx(x, y, z)] = b; }
+const solidB = b => b !== 0 && b !== 5 && b !== 10 && b < 13; // hojas se atraviesan
+// RNG con semilla: el mundo siempre es el mismo
+let _s = 1337;
+function rnd() { _s |= 0; _s = _s + 0x6D2B79F5 | 0; let t = Math.imul(_s ^ _s >>> 15, 1 | _s); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }
+
+// --- terreno base con lomitas ---
+const H = [];
+for (let z = 0; z < WZ; z++) { H[z] = [];
+  for (let x = 0; x < WX; x++) {
+    let h = 3 + Math.round(Math.sin(x * 0.16) + Math.cos(z * 0.14) + Math.sin((x + z) * 0.07) * 1.5);
+    h = Math.max(2, Math.min(6, h));
+    if (x >= 8 && x <= 48 && z >= 6 && z <= 40) h = 3;
+    H[z][x] = h;
+  }
+}
+function carve(cx, cz, rx, rz) {
+  for (let z = 0; z < WZ; z++) for (let x = 0; x < WX; x++) {
+    const dx = (x - cx) / rx, dz = (z - cz) / rz, d = dx * dx + dz * dz;
+    if (d < 1) H[z][x] = Math.min(H[z][x], d < 0.45 ? 1 : 2);
+  }
+}
+carve(52, 46, 9, 6); carve(10, 50, 5, 4);
+const surf = [];
+for (let z = 0; z < WZ; z++) { surf[z] = [];
+  for (let x = 0; x < WX; x++) {
+    const h = H[z][x]; surf[z][x] = 1;
+    for (let y = 0; y <= h; y++) setB(x, y, z, y === h ? 1 : (y >= h - 2 ? 2 : 3));
+    if (h < WL) for (let y = h + 1; y <= WL; y++) setB(x, y, z, 5);
+  }
+}
+for (let z = 1; z < WZ - 1; z++) for (let x = 1; x < WX - 1; x++) {
+  if (H[z][x] === WL && (H[z][x+1] < WL || H[z][x-1] < WL || H[z+1][x] < WL || H[z-1][x] < WL)) {
+    setB(x, H[z][x], z, 4); surf[z][x] = 4;
+  }
+}
+for (let x = 24; x <= 32; x++) for (let z = 22; z <= 28; z++) { setB(x, H[z][x], z, 3); surf[z][x] = 3; }
+(function well() {
+  const cx = 28, cz = 25, g = H[cz][cx];
+  for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+    if (dx === 0 && dz === 0) { setB(cx, g + 1, cz, 5); continue; }
+    setB(cx + dx, g + 1, cz + dz, 3);
+  }
+  setB(cx - 1, g + 2, cz - 1, 6); setB(cx + 1, g + 2, cz + 1, 6);
+  for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) setB(cx + dx, g + 3, cz + dz, 7);
+})();
+function pathV(x, z0, z1) { for (let z = z0; z <= z1; z++) if (getB(x, H[z][x] + 1, z) === 0 && surf[z][x] === 1) { setB(x, H[z][x], z, 2); surf[z][x] = 2; } }
+function pathH(z, x0, x1) { for (let x = x0; x <= x1; x++) if (getB(x, H[z][x] + 1, z) === 0 && surf[z][x] === 1) { setB(x, H[z][x], z, 2); surf[z][x] = 2; } }
+pathV(20, 2, 58); pathV(36, 2, 58); pathH(18, 2, 62); pathH(30, 2, 62); pathH(46, 2, 44); pathV(44, 30, 44);
+function house(hx, hz, w, d, door) {
+  const g = H[hz][hx];
+  for (let dz = 0; dz < d; dz++) for (let dx = 0; dx < w; dx++) setB(hx + dx, g + 1, hz + dz, 6);
+  for (let y = g + 2; y <= g + 4; y++)
+    for (let dz = 0; dz < d; dz++) for (let dx = 0; dx < w; dx++) {
+      if (dx !== 0 && dz !== 0 && dx !== w - 1 && dz !== d - 1) continue;
+      setB(hx + dx, y, hz + dz, 6);
+    }
+  const midX = hx + (w >> 1), midZ = hz + (d >> 1);
+  for (let dx = 1; dx < w - 1; dx += 2) { setB(hx + dx, g + 3, hz, 8); setB(hx + dx, g + 3, hz + d - 1, 8); }
+  for (let dz = 1; dz < d - 1; dz += 2) { setB(hx, g + 3, hz + dz, 8); setB(hx + w - 1, g + 3, hz + dz, 8); }
+  if (door === "S") { setB(midX, g + 2, hz + d - 1, 0); setB(midX, g + 3, hz + d - 1, 0); }
+  if (door === "N") { setB(midX, g + 2, hz, 0); setB(midX, g + 3, hz, 0); }
+  if (door === "E") { setB(hx + w - 1, g + 2, midZ, 0); setB(hx + w - 1, g + 3, midZ, 0); }
+  if (door === "W") { setB(hx, g + 2, midZ, 0); setB(hx, g + 3, midZ, 0); }
+  for (let dx = 1; dx < w - 1; dx++) for (let dz = 1; dz < d - 1; dz++) setB(hx + dx, g + 5, hz + dz, 7);
+  if (w > 4 && d > 4) for (let dx = 2; dx < w - 2; dx++) for (let dz = 2; dz < d - 2; dz++) setB(hx + dx, g + 6, hz + dz, 7);
+}
+house(11, 10, 7, 5, "E"); house(24, 9, 7, 5, "W"); house(40, 10, 7, 5, "W");
+house(11, 24, 7, 5, "E"); house(24, 33, 7, 5, "N"); house(40, 33, 7, 5, "N");
+house(11, 40, 7, 5, "E");
+function tree(x, z) {
+  if (x < 2 || z < 2 || x > WX - 3 || z > WZ - 3) return;
+  const g = H[z][x];
+  if (getB(x, g + 1, z) !== 0 || H[z][x] < WL || surf[z][x] !== 1) return;
+  const th = 3 + Math.floor(rnd() * 2);
+  for (let y = g + 1; y <= g + th; y++) setB(x, y, z, 9);
+  for (let dy = -1; dy <= 1; dy++) for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
+    if (Math.abs(dx) === 2 && Math.abs(dz) === 2) continue;
+    if (getB(x + dx, g + th + dy, z + dz) === 0) setB(x + dx, g + th + dy, z + dz, 10);
+  }
+  if (getB(x, g + th + 2, z) === 0) setB(x, g + th + 2, z, 10);
+}
+for (let i = 0; i < 200; i++) {
+  const x = 2 + Math.floor(rnd() * (WX - 4)), z = 2 + Math.floor(rnd() * (WZ - 4));
+  const corner = (x < 20 && z < 16) || (x > 44 && z < 16) || (x < 24 && z > 44) || (x > 42 && z > 38);
+  const ds = Math.hypot(x - 20, z - 31); // despejado alrededor del spawn
+  if (ds > 4 && ((corner && rnd() < 0.5) || rnd() < 0.06)) tree(x, z);
+}
+const LAMPS = [];
+function lamp(x, z) {
+  const g = H[z][x];
+  if (getB(x, g + 1, z) !== 0 || H[z][x] < WL) return;
+  setB(x, g + 1, z, 11); setB(x, g + 2, z, 11); setB(x, g + 3, z, 12);
+  LAMPS.push([x + 0.5, g + 3.5, z + 0.5]);
+}
+[[21,6],[21,14],[21,24],[21,34],[21,42],[21,50],[37,6],[37,14],[37,24],[37,34],[37,42],[37,50],
+ [23,21],[33,21],[23,29],[33,29],[43,39],[49,38],[14,19],[30,19]].forEach(([x,z]) => lamp(x, z));
+// (flores-cubo eliminadas: de cerca parecían bloques basura; el pasto lleva textura por hash en el renderer)
+for (let x = 0; x < WX; x++) for (let y = 0; y < 6; y++) { setB(x, y, 0, 3); setB(x, y, WZ - 1, 3); }
+for (let z = 0; z < WZ; z++) for (let y = 0; y < 6; y++) { setB(0, y, z, 3); setB(WX - 1, y, z, 3); }
+
+// ================= COLORES (tabla plana, cero allocs) =================
+const COLT = new Int32Array(17 * 4);
+function pack(r, g, b) { return (r << 16) | (g << 8) | b; }
+(function baseColors() {
+  const C = {
+    1: [[86,178,80],[138,106,62]], 2: [[176,141,87],[140,110,66]],
+    3: [[170,175,182],[120,124,131]], 4: [[228,210,156],[190,172,120]],
+    5: [[90,190,235],[36,120,190]], 6: [[188,128,64],[150,100,50]],
+    7: [[214,62,46],[150,42,32]], 9: [[142,96,50],[110,74,38]],
+    10: [[58,182,80],[36,120,52]], 11: [[70,70,70],[50,50,50]],
+  };
+  for (const id in C) {
+    const t = C[id][0], s = C[id][1];
+    COLT[id*4+0] = pack(t[0],t[1],t[2]);
+    COLT[id*4+1] = pack(s[0]*0.6|0, s[1]*0.6|0, s[2]*0.6|0);
+    COLT[id*4+2] = pack(s[0],s[1],s[2]);
+    COLT[id*4+3] = pack(s[0],s[1],s[2]);
+  }
+})();
+let EMW = -1, EML = -1;
+function updateEmissive(S) {
+  const on = S.light < 0.6;
+  EMW = on ? 1 : -1; EML = on ? 1 : -1;
+  const wC = on ? pack(255,215,94) : pack(216,242,255);
+  const lC = on ? pack(255,215,94) : pack(150,150,150);
+  for (let f = 0; f < 4; f++) { COLT[8*4+f] = wC; COLT[12*4+f] = lC; }
+}
+function sky() {
+  const t = ((dayT % 1) + 1) % 1;
+  if (t < 0.30) { const k = t / 0.30;
+    return { name: "☀ DÍA", light: 1, sun: norm([Math.cos(Math.PI * k), Math.sin(Math.PI * k) * 0.9 + 0.15, -0.35]),
+      top: [74, 144, 217], hor: [178, 214, 242] }; }
+  if (t < 0.45) { const k = (t - 0.30) / 0.15;
+    return { name: "🌇 ATARDECER", light: 0.5, sun: norm([-0.9 + 0.2 * k, 0.14 * (1 - k) + 0.02, -0.35]),
+      top: [58, 35, 80], hor: [255, 158, 122] }; }
+  if (t < 0.80) { const k = (t - 0.45) / 0.35;
+    return { name: "🌙 NOCHE", light: 0.22, moon: norm([Math.cos(Math.PI * k), Math.sin(Math.PI * k) * 0.8 + 0.2, 0.3]),
+      top: [5, 9, 20], hor: [12, 20, 36] }; }
+  const k = (t - 0.80) / 0.20;
+  return { name: "🌅 AMANECER", light: 0.55, sun: norm([0.9 - 1.8 * k, 0.03 + 0.12 * k, 0.35]),
+    top: [74, 74, 122], hor: [255, 196, 158] };
+}
+function norm(v) { const l = Math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; }
+function hash2(x, y) {
+  let h = (Math.floor(x) * 374761393 + Math.floor(y) * 668265263) | 0;
+  h = (h ^ (h >> 13)) | 0; h = (h * 1274126177) | 0;
+  return ((h ^ (h >> 16)) >>> 0) / 4294967295;
+}
+
+// ================= RENDERER VOXEL =================
+const screen = document.getElementById("screen");
+const cv = document.getElementById("cv");
+const ctx = cv.getContext("2d");
+const buf = document.createElement("canvas");
+const bctx = buf.getContext("2d");
+let BW = 284, BH = 150, PIX = 150, Q = 1;
+let img = null;
+function fit() {
+  const sw = screen.clientWidth - 8, sh = screen.clientHeight - 8;
+  BH = Math.max(100, Math.min(180, Math.round(PIX * Q)));
+  BW = Math.max(160, Math.min(460, Math.round(BH * sw / sh)));
+  buf.width = BW; buf.height = BH;
+  img = bctx.createImageData(BW, BH);
+  const k = Math.max(1, Math.floor(Math.min(sw / BW, sh / BH)));
+  cv.width = BW * k; cv.height = BH * k;
+  ctx.imageSmoothingEnabled = false;
+}
+let rsz; addEventListener("resize", () => { clearTimeout(rsz); rsz = setTimeout(fit, 120); });
+
+let px = 20.5, py = 5, pz = 31.5, vy = 0, yaw = 0, pitch = -0.05, grounded = true;
+let keys = {}, locked = false;
+let dayT = 0.12, autoDay = true;
+const DAY_LEN = 150;
+let T = 0;
+const HIT = { b: 0, face: 0, t: 0, w: null };
+const HITW = { t: 0, face: 0 };
+const faceShade = [1.0, 0.5, 0.82, 0.68];
+
+function castVoxel(ex, ey, ez, dx, dy, dz, uw) {
+  let vx = Math.floor(ex), vy0 = Math.floor(ey), vz = Math.floor(ez);
+  const stx = dx > 0 ? 1 : -1, sty = dy > 0 ? 1 : -1, stz = dz > 0 ? 1 : -1;
+  const tdx = Math.abs(1 / (dx || 1e-9)), tdy = Math.abs(1 / (dy || 1e-9)), tdz = Math.abs(1 / (dz || 1e-9));
+  let tmx = ((stx > 0 ? vx + 1 - ex : ex - vx)) * tdx;
+  let tmy = ((sty > 0 ? vy0 + 1 - ey : ey - vy0)) * tdy;
+  let tmz = ((stz > 0 ? vz + 1 - ez : ez - vz)) * tdz;
+  let face = 0, t = 0;
+  HIT.b = 0; HIT.face = 0; HIT.t = Infinity; HIT.w = null;
+  for (let i = 0; i < 140; i++) {
+    if (tmx < tmy && tmx < tmz) { vx += stx; t = tmx; tmx += tdx; face = 2; }
+    else if (tmy < tmz) { vy0 += sty; t = tmy; tmy += tdy; face = sty > 0 ? 1 : 0; }
+    else { vz += stz; t = tmz; tmz += tdz; face = 3; }
+    if (t > 70) return;
+    if (vx < 0 || vz < 0 || vx >= WX || vz >= WZ) { HIT.b = 3; HIT.face = face; HIT.t = t; return; }
+    const b = getB(vx, vy0, vz);
+    if (b === 0) continue;
+    if (b === 5) { if (!uw && !HIT.w) { HITW.t = t; HITW.face = face; HIT.w = HITW; } continue; }
+    HIT.b = b; HIT.face = face; HIT.t = t; return;
+  }
+}
+function sunSq(dx, dy, dz, sx, sy, sz, size) {
+  const f = dx * sx + dy * sy + dz * sz;
+  if (f <= 0) return -1;
+  let ux = -sz, uz = sx;
+  const ul = Math.sqrt(ux * ux + uz * uz);
+  if (ul < 1e-4) { ux = 1; uz = 0; } else { ux /= ul; uz /= ul; }
+  const vx = sy * uz, vy2 = sz * ux - sx * uz, vz = -sy * ux;
+  const ox = dx - sx * f, oy = dy - sy * f, oz = dz - sz * f;
+  const au = (ox * ux + oz * uz) / f, av = (ox * vx + oy * vy2 + oz * vz) / f;
+  const m = Math.abs(au) > Math.abs(av) ? Math.abs(au) : Math.abs(av);
+  return m < size ? m : -1;
+}
+
+function render(dt) {
+  T += dt;
+  const S = sky();
+  updateEmissive(S);
+  const d = img.data;
+  const eyeX = px, eyeY = py + 1.62, eyeZ = pz;
+  const uw = getB(Math.floor(eyeX), Math.floor(eyeY), Math.floor(eyeZ)) === 5;
+  const sy = Math.sin(yaw), cy = Math.cos(yaw), sp = Math.sin(pitch), cp = Math.cos(pitch);
+  const tanV = 0.767, aspect = BW / BH, tanH = tanV * aspect;
+  const fogC = uw ? [20, 80, 140] : S.hor;
+  const fogK = uw ? 0.30 : 0.012; // niebla suave: ya no lava todo de naranja
+  const glowOn = S.light < 0.45;
+  let p = 0;
+  for (let iy = 0; iy < BH; iy++) {
+    const fy = (1 - 2 * (iy + 0.5) / BH) * tanV;
+    for (let ix = 0; ix < BW; ix++) {
+      const fx = (2 * (ix + 0.5) / BW - 1) * tanH;
+      const y1 = fy * cp + sp, z1 = fy * sp - cp;
+      let dx = fx * cy + z1 * sy, dy = y1, dz = -fx * sy + z1 * cy;
+      const il = 1 / Math.sqrt(dx * dx + dy * dy + dz * dz); dx *= il; dy *= il; dz *= il;
+      castVoxel(eyeX, eyeY, eyeZ, dx, dy, dz, uw);
+      const ht = HIT.t, hb = HIT.b;
+      let r, g, b;
+      let cloudT = Infinity;
+      if (dy > 0.03 && !uw) {
+        const t = (12.5 - eyeY) / dy;
+        if (t > 0 && t < 70) {
+          const cx = eyeX + dx * t + T * 0.7, cz = eyeZ + dz * t;
+          if (hash2(Math.floor(cx / 4), Math.floor(cz / 4)) > 0.52) cloudT = t;
+        }
+      }
+      const bestT = ht < cloudT ? ht : cloudT;
+      if (bestT === Infinity) {
+        const up = dy > 0 ? dy * dy : 0;
+        r = S.hor[0] + (S.top[0] - S.hor[0]) * up;
+        g = S.hor[1] + (S.top[1] - S.hor[1]) * up;
+        b = S.hor[2] + (S.top[2] - S.hor[2]) * up;
+        if (S.sun && sunSq(dx, dy, dz, S.sun[0], S.sun[1], S.sun[2], 0.05) >= 0) { r = 255; g = 217; b = 77; }
+        else if (S.moon && sunSq(dx, dy, dz, S.moon[0], S.moon[1], S.moon[2], 0.035) >= 0) { r = 232; g = 236; b = 244; }
+        else if (S.light < 0.3) {
+          const sh2 = hash2(Math.floor(dx * 300), Math.floor(dy * 300) + Math.floor(dz * 300) * 7);
+          if (sh2 > 0.996 && Math.sin(T * 2 + sh2 * 40) > -0.2) { r = 235; g = 235; b = 235; }
+        }
+      } else if (cloudT < ht) {
+        const lc = 200 * S.light + 15;
+        const f2 = 1 - Math.exp(-cloudT * fogK);
+        r = lc + (fogC[0] - lc) * f2; g = (lc + 5) + (fogC[1] - lc - 5) * f2; b = (lc + 15) + (fogC[2] - lc - 15) * f2;
+      } else {
+        const c = COLT[hb * 4 + HIT.face];
+        let li = S.light * faceShade[HIT.face];
+        if ((hb === 8 && EMW > 0) || (hb === 12 && EML > 0)) li = 1;
+        r = ((c >> 16) & 255) * li; g = ((c >> 8) & 255) * li; b = (c & 255) * li;
+        if (hb === 1 && HIT.face === 0) { // textura de pasto por hash (sin cubos-flor)
+          const hv = hash2(Math.floor(eyeX + dx * ht) * 3 + 1, Math.floor(eyeZ + dz * ht) * 3 + 7);
+          if (hv > 0.72) { r *= 0.86; g *= 0.93; b *= 0.86; } else if (hv < 0.22) { r *= 1.07; g *= 1.06; }
+        }
+        if (uw) { r = r * 0.4 + 10; g = g * 0.6 + 40; b = b * 0.8 + 70; }
+        if (HIT.w) {
+          const k = 0.55;
+          r += (70 * S.light - r) * k; g += (160 * S.light - g) * k; b += (220 * S.light - b) * k;
+        }
+        if (glowOn && ht < 16) {
+          const hx2 = eyeX + dx * ht, hy2 = eyeY + dy * ht, hz2 = eyeZ + dz * ht;
+          let gl = 0;
+          for (let li2 = 0; li2 < LAMPS.length; li2++) {
+            const L = LAMPS[li2];
+            const ax = hx2 - L[0]; if (ax > 9 || ax < -9) continue;
+            const ay = hy2 - L[1]; if (ay > 9 || ay < -9) continue;
+            const az = hz2 - L[2]; if (az > 9 || az < -9) continue;
+            const gg = (1 - Math.sqrt(ax * ax + ay * ay + az * az) / 9) * 0.55;
+            if (gg > gl) gl = gg;
+          }
+          if (gl > 0) { r += (255 - r) * gl * 0.7; g += (200 - g) * gl * 0.7; b += (120 - b) * gl * 0.7; }
+        }
+        const f2 = 1 - Math.exp(-ht * fogK);
+        r += (fogC[0] - r) * f2; g += (fogC[1] - g) * f2; b += (fogC[2] - b) * f2;
+      }
+      d[p++] = r; d[p++] = g; d[p++] = b; d[p++] = 255;
+    }
+  }
+  bctx.putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  ctx.drawImage(buf, 0, 0, cv.width, cv.height);
+  if (uw) { ctx.fillStyle = "rgba(20,90,160,0.25)"; ctx.fillRect(0, 0, cv.width, cv.height); }
+  document.getElementById("phase").textContent = S.name + (autoDay ? " · auto" : " · manual");
+}
+
+// ================= FÍSICA =================
+function collideAt(nx, ny, nz) {
+  for (const ox of [-0.3, 0.3]) for (const oz of [-0.3, 0.3]) for (const oy of [0, 0.9, 1.79]) {
+    if (solidB(getB(Math.floor(nx + ox), Math.floor(ny + oy), Math.floor(nz + oz)))) return true;
+  }
+  return false;
+}
+function moveY(dy) {
+  if (dy === 0) return;
+  const n = Math.max(1, Math.ceil(Math.abs(dy) / 0.5)), st = dy / n;
+  for (let i = 0; i < n; i++) {
+    const ny2 = py + st;
+    if (collideAt(px, ny2, pz)) { if (vy < 0) { py = Math.floor(ny2) + 1; grounded = true; } vy = 0; return; }
+    py = ny2;
+  }
+  if (vy !== 0) grounded = false;
+}
+
+// ================= LOOP =================
+const fpsEl = document.getElementById("fps"), posEl = document.getElementById("pos");
+const overlay = document.getElementById("overlay");
+let last = performance.now(), frames = 0, ftime = 0;
+function groundTop(x, z) {
+  for (let y = WY - 1; y >= 0; y--) if (solidB(getB(Math.floor(x), y, Math.floor(z)))) return y + 1;
+  return 1;
+}
+py = groundTop(px, pz);
+{ let gd = 0; while (collideAt(px, py, pz) && gd++ < 8) py += 1; }
+if (getB(Math.floor(px), Math.floor(py + 0.4), Math.floor(pz)) === 5) { px += 2.5; py = groundTop(px, pz); }
+function loop(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (autoDay) dayT = (dayT + dt / DAY_LEN) % 1;
+  const inWater = getB(Math.floor(px), Math.floor(py + 0.4), Math.floor(pz)) === 5;
+  const run = keys["shift"] ? 1.55 : 1;
+  const sp = inWater ? 2.4 : 4.3 * run;
+  const fw = (keys["w"] || keys["arrowup"] ? 1 : 0) - (keys["s"] || keys["arrowdown"] ? 1 : 0);
+  const st = (keys["d"] ? 1 : 0) - (keys["a"] ? 1 : 0);
+  const sy2 = Math.sin(yaw), cy2 = Math.cos(yaw);
+  const fxw = -sy2, fzw = -cy2; // forward (yaw=0 -> -z, igual que el renderer)
+  const rX = cy2, rZ = -sy2;    // right (yaw=0 -> +x)
+  const dx = (fxw * fw + rX * st) * sp * dt;
+  const dz = (fzw * fw + rZ * st) * sp * dt;
+  if (!collideAt(px + dx, py, pz)) px += dx;
+  else if (!collideAt(px + dx, py + 1.05, pz)) { px += dx; py += 1.05; vy = 0; grounded = true; }
+  if (!collideAt(px, py, pz + dz)) pz += dz;
+  else if (!collideAt(px, py + 1.05, pz + dz)) { pz += dz; py += 1.05; vy = 0; grounded = true; }
+  px = Math.max(1.2, Math.min(WX - 1.2, px));
+  pz = Math.max(1.2, Math.min(WZ - 1.2, pz));
+  if (inWater) {
+    vy -= 8 * dt;
+    if (keys[" "]) vy = 3.4;
+    else { vy += 10 * dt; if (vy > 1.0) vy = 1.0; }
+    if (vy < -3) vy = -3;
+    grounded = false;
+  } else {
+    vy -= 24 * dt;
+    if (vy < -18) vy = -18;
+    if (keys[" "] && grounded) { vy = 8.5; grounded = false; }
+  }
+  moveY(vy * dt);
+  if (py < 1) { py = 1; vy = 0; grounded = true; }
+  render(dt);
+  frames++; ftime += dt;
+  if (ftime >= 1.5) {
+    const fps = frames / ftime;
+    if (fps < 22 && Q > 0.4) { Q = Math.max(0.4, Q * 0.85); fit(); }
+    else if (fps > 55 && Q < 1) { Q = Math.min(1, Q + 0.1); fit(); }
+    fpsEl.textContent = Math.round(fps) + " fps · " + BW + "x" + BH;
+    posEl.textContent = "x" + px.toFixed(0) + " z" + pz.toFixed(0) + (inWater ? " · 🏊" : "");
+    frames = 0; ftime = 0;
+  }
+  requestAnimationFrame(loop);
+}
+
+// ================= INPUT =================
+addEventListener("keydown", e => {
+  const k = e.key.toLowerCase(); keys[k] = true;
+  if (k === "-") { PIX = Math.max(90, PIX - 10); fit(); }
+  if (k === "=" || k === "+") { PIX = Math.min(220, PIX + 10); fit(); }
+  if (k === "n") { dayT = (dayT + 0.25) % 1; autoDay = false; }
+  if (k === "h") { autoDay = !autoDay; }
+  if (k === "f") { const s = document.getElementById("scan"); s.style.display = s.style.display === "none" ? "block" : "none"; }
+  if (["arrowup","arrowdown","arrowleft","arrowright"," "].includes(k)) e.preventDefault();
+});
+addEventListener("keyup", e => { keys[e.key.toLowerCase()] = false; });
+overlay.addEventListener("click", () => screen.requestPointerLock());
+screen.addEventListener("click", () => { if (!locked) screen.requestPointerLock(); });
+document.addEventListener("pointerlockchange", () => {
+  locked = document.pointerLockElement === screen;
+  overlay.classList.toggle("hidden", locked);
+});
+document.addEventListener("mousemove", e => {
+  if (!locked) return;
+  yaw -= e.movementX * 0.0026;
+  pitch = Math.max(-1.5, Math.min(1.5, pitch - e.movementY * 0.0026));
+});
+
+fit(); setTimeout(fit, 60);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
