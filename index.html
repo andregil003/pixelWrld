@@ -134,7 +134,7 @@ const SMOKE = [];
 function chimney(hx, hz, ox, oz) {
   const g = H[hz][hx], x = hx + ox, z = hz + oz;
   setB(x, g + 5, z, 3); setB(x, g + 6, z, 3); setB(x, g + 7, z, 3);
-  SMOKE.push([x + 0.5, g + 7.6, z + 0.5]);
+  SMOKE.push([x + 0.5, g + 8.3, z + 0.5]); // justo sobre la punta (el bloque ocupa hasta g+8)
 }
 chimney(11, 10, 1, 1); chimney(24, 33, 5, 3);
 function tree(x, z) {
@@ -379,11 +379,11 @@ function render(dt) {
           let gl = 0;
           for (let li2 = 0; li2 < LAMPS.length; li2++) {
             const L = LAMPS[li2];
-            const ax = hx2 - L[0]; if (ax > 6 || ax < -6) continue;
-            const ay = hy2 - L[1]; if (ay > 6 || ay < -6) continue;
-            const az = hz2 - L[2]; if (az > 6 || az < -6) continue;
-            const dd = Math.sqrt(ax * ax + ay * ay + az * az) / 6;
-            const gg = (1 - dd) * (1 - dd) * 0.6;
+            const ax = hx2 - L[0]; if (ax > 4 || ax < -4) continue;
+            const ay = hy2 - L[1]; if (ay > 4 || ay < -4) continue;
+            const az = hz2 - L[2]; if (az > 4 || az < -4) continue;
+            const dd = Math.sqrt(ax * ax + ay * ay + az * az) / 4;
+            const gg = (1 - dd) * (1 - dd) * 0.45;
             if (gg > gl) gl = gg;
           }
           if (gl > 0) { r += (255 - r) * gl * 0.7; g += (180 - g) * gl * 0.7; b += (80 - b) * gl * 0.7; }
@@ -411,7 +411,6 @@ function render(dt) {
     const sxp = Math.floor((rx * cy + rz * -sy) / (cxp * tanH) * 0.5 * BW + BW / 2);
     const syp = Math.floor(BH / 2 - up2 / (cxp * tanV) * 0.5 * BH);
     if (sxp < 0 || syp < 0 || sxp >= BW || syp >= BH) continue;
-    if (P2.c === 1 && Math.sin(T * 6 + P2.x * 3 + P2.z * 2) <= 0) continue; // luciérnagas parpadean
     bctx.fillStyle = PCOL[P2.c];
     bctx.fillRect(sxp, syp, P2.c === 3 ? 2 : 1, 1);
   }
@@ -423,9 +422,7 @@ function render(dt) {
     if (Math.random() < dt * 8) spawnP(L[0] + (Math.random() - 0.5) * 0.5, L[1], L[2] + (Math.random() - 0.5) * 0.5,
       (Math.random() - 0.5) * 0.3, 0.5 + Math.random() * 0.5, (Math.random() - 0.5) * 0.3, 0.8, 0);
   }
-  if (night && PARTS.length < 100 && Math.random() < dt * 20) // luciérnagas
-    spawnP(eyeX + (Math.random() - 0.5) * 36, eyeY - 1 + Math.random() * 3, eyeZ + (Math.random() - 0.5) * 36,
-      (Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.2, (Math.random() - 0.5) * 0.5, 4, 1);
+  // (luciérnagas eliminadas a pedido de André)
   if (day && PARTS.length < 100 && Math.random() < dt * 10) // hojas al viento
     spawnP(eyeX + (Math.random() - 0.5) * 28, eyeY + 2 + Math.random() * 4, eyeZ + (Math.random() - 0.5) * 28,
       (Math.random() - 0.5) * 0.6, -0.5 - Math.random() * 0.4, (Math.random() - 0.5) * 0.6, 5, 2);
