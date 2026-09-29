@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>pixel-world v5.2 — restaurado sin lo feo</title>
+<title>pixel-world v5.3 — visual</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { height: 100%; overflow: hidden; background: #010603;
@@ -32,15 +32,15 @@
 </head>
 <body>
 <div id="wrap">
-  <div id="topbar"><span><b>PIXEL-WORLD v5.2</b> · pueblito</span><span id="fps">…</span><span id="pos"></span><span id="phase"></span></div>
+  <div id="topbar"><span><b>PIXEL-WORLD v5.3</b> · pueblito</span><span id="fps">…</span><span id="pos"></span><span id="phase"></span></div>
   <div id="screen">
     <canvas id="cv"></canvas>
     <div id="scan"></div>
     <div id="cross">+</div>
     <div id="toast">WASD moverse · mouse mirar · ESPACIO saltar · SHIFT correr · N día/noche · H auto</div>
     <div id="overlay"><div>
-      <div class="big">PIXEL-WORLD v5.2</div>
-      <div>casas con techo rojo · lago · bosque · plaza · faroles</div><br>
+      <div class="big">PIXEL-WORLD v5.3</div>
+      <div>casas con techo rojo · lago · bosque · plaza · faroles · trigal</div><br>
       <div><b>CLICK PARA JUGAR</b></div><br>
       <div>WASD + mouse · ESPACIO salta · SHIFT corre · N noche · F scanlines · -/= detalle</div>
     </div></div>
@@ -59,8 +59,7 @@ function getB(x, y, z) {
   return W[idx(x, y, z)];
 }
 function setB(x, y, z, b) { if (x >= 0 && z >= 0 && y >= 0 && x < WX && z < WZ && y < WY) W[idx(x, y, z)] = b; }
-const solidB = b => b !== 0 && b !== 5 && b !== 10 && b < 13; // hojas se atraviesan
-// RNG con semilla: el mundo siempre es el mismo
+const solidB = b => b !== 0 && b !== 5 && b !== 10 && b < 13;
 let _s = 1337;
 function rnd() { _s |= 0; _s = _s + 0x6D2B79F5 | 0; let t = Math.imul(_s ^ _s >>> 15, 1 | _s); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }
 
@@ -107,6 +106,9 @@ for (let x = 24; x <= 32; x++) for (let z = 22; z <= 28; z++) { setB(x, H[z][x],
 function pathV(x, z0, z1) { for (let z = z0; z <= z1; z++) if (getB(x, H[z][x] + 1, z) === 0 && surf[z][x] === 1) { setB(x, H[z][x], z, 2); surf[z][x] = 2; } }
 function pathH(z, x0, x1) { for (let x = x0; x <= x1; x++) if (getB(x, H[z][x] + 1, z) === 0 && surf[z][x] === 1) { setB(x, H[z][x], z, 2); surf[z][x] = 2; } }
 pathV(20, 2, 58); pathV(36, 2, 58); pathH(18, 2, 62); pathH(30, 2, 62); pathH(46, 2, 44); pathV(44, 30, 44);
+// trigal al este (surcos, sin geometría: se lee solo)
+for (let x = 50; x <= 58; x++) for (let z = 12; z <= 18; z++)
+  if (surf[z][x] === 1 && getB(x, H[z][x] + 1, z) === 0) { surf[z][x] = "crop"; if (z % 2 === 0) setB(x, H[z][x], z, 2); }
 function house(hx, hz, w, d, door) {
   const g = H[hz][hx];
   for (let dz = 0; dz < d; dz++) for (let dx = 0; dx < w; dx++) setB(hx + dx, g + 1, hz + dz, 6);
@@ -128,6 +130,13 @@ function house(hx, hz, w, d, door) {
 house(11, 10, 7, 5, "E"); house(24, 9, 7, 5, "W"); house(40, 10, 7, 5, "W");
 house(11, 24, 7, 5, "E"); house(24, 33, 7, 5, "N"); house(40, 33, 7, 5, "N");
 house(11, 40, 7, 5, "E");
+const SMOKE = [];
+function chimney(hx, hz, ox, oz) {
+  const g = H[hz][hx], x = hx + ox, z = hz + oz;
+  setB(x, g + 5, z, 3); setB(x, g + 6, z, 3); setB(x, g + 7, z, 3);
+  SMOKE.push([x + 0.5, g + 7.6, z + 0.5]);
+}
+chimney(11, 10, 1, 1); chimney(24, 33, 5, 3);
 function tree(x, z) {
   if (x < 2 || z < 2 || x > WX - 3 || z > WZ - 3) return;
   const g = H[z][x];
@@ -143,7 +152,7 @@ function tree(x, z) {
 for (let i = 0; i < 200; i++) {
   const x = 2 + Math.floor(rnd() * (WX - 4)), z = 2 + Math.floor(rnd() * (WZ - 4));
   const corner = (x < 20 && z < 16) || (x > 44 && z < 16) || (x < 24 && z > 44) || (x > 42 && z > 38);
-  const ds = Math.hypot(x - 20, z - 31); // despejado alrededor del spawn
+  const ds = Math.hypot(x - 20, z - 31);
   if (ds > 4 && ((corner && rnd() < 0.5) || rnd() < 0.06)) tree(x, z);
 }
 const LAMPS = [];
@@ -155,11 +164,11 @@ function lamp(x, z) {
 }
 [[21,6],[21,14],[21,24],[21,34],[21,42],[21,50],[37,6],[37,14],[37,24],[37,34],[37,42],[37,50],
  [23,21],[33,21],[23,29],[33,29],[43,39],[49,38],[14,19],[30,19]].forEach(([x,z]) => lamp(x, z));
-// (flores-cubo eliminadas: de cerca parecían bloques basura; el pasto lleva textura por hash en el renderer)
+// (flores-cubo eliminadas: el pasto lleva textura + puntitos por hash en el renderer)
 for (let x = 0; x < WX; x++) for (let y = 0; y < 6; y++) { setB(x, y, 0, 3); setB(x, y, WZ - 1, 3); }
 for (let z = 0; z < WZ; z++) for (let y = 0; y < 6; y++) { setB(0, y, z, 3); setB(WX - 1, y, z, 3); }
 
-// ================= COLORES (tabla plana, cero allocs) =================
+// ================= COLORES =================
 const COLT = new Int32Array(17 * 4);
 function pack(r, g, b) { return (r << 16) | (g << 8) | b; }
 (function baseColors() {
@@ -207,6 +216,14 @@ function hash2(x, y) {
   h = (h ^ (h >> 13)) | 0; h = (h * 1274126177) | 0;
   return ((h ^ (h >> 16)) >>> 0) / 4294967295;
 }
+
+// ================= PARTÍCULAS (overlay 2D sobre el buffer) =================
+const PARTS = [];
+function spawnP(x, y, z, vx, vy, vz, life, c) {
+  if (PARTS.length > 110) return;
+  PARTS.push({ x, y, z, vx, vy, vz, life, ml: life, c });
+}
+const PCOL = ["#ff9a3c", "#c8ff7a", "#4caf5a", "#8a8a8a", "#5a5a5a"];
 
 // ================= RENDERER VOXEL =================
 const screen = document.getElementById("screen");
@@ -275,14 +292,15 @@ function render(dt) {
   T += dt;
   const S = sky();
   updateEmissive(S);
+  const night = S.light < 0.45, day = S.light > 0.8;
   const d = img.data;
   const eyeX = px, eyeY = py + 1.62, eyeZ = pz;
   const uw = getB(Math.floor(eyeX), Math.floor(eyeY), Math.floor(eyeZ)) === 5;
   const sy = Math.sin(yaw), cy = Math.cos(yaw), sp = Math.sin(pitch), cp = Math.cos(pitch);
   const tanV = 0.767, aspect = BW / BH, tanH = tanV * aspect;
   const fogC = uw ? [20, 80, 140] : S.hor;
-  const fogK = uw ? 0.30 : 0.012; // niebla suave: ya no lava todo de naranja
-  const glowOn = S.light < 0.45;
+  const fogK = uw ? 0.30 : 0.012;
+  const glowOn = night;
   let p = 0;
   for (let iy = 0; iy < BH; iy++) {
     const fy = (1 - 2 * (iy + 0.5) / BH) * tanV;
@@ -323,27 +341,52 @@ function render(dt) {
         let li = S.light * faceShade[HIT.face];
         if ((hb === 8 && EMW > 0) || (hb === 12 && EML > 0)) li = 1;
         r = ((c >> 16) & 255) * li; g = ((c >> 8) & 255) * li; b = (c & 255) * li;
-        if (hb === 1 && HIT.face === 0) { // textura de pasto por hash (sin cubos-flor)
-          const hv = hash2(Math.floor(eyeX + dx * ht) * 3 + 1, Math.floor(eyeZ + dz * ht) * 3 + 7);
+        if (HIT.face >= 2) { // sol direccional cálido/frío + AO de contacto
+          const sgn = HIT.face === 2 ? -Math.sign(dx) : -Math.sign(dz);
+          const sd = S.sun ? sgn * (HIT.face === 2 ? S.sun[0] : S.sun[2]) : sgn * (S.moon ? (HIT.face === 2 ? S.moon[0] : S.moon[2]) : 0) * 0.5;
+          if (sd > 0) { r *= 1 + 0.12 * sd; g *= 1 + 0.04 * sd; b *= 1 - 0.10 * sd; }
+          else { r *= 1 + 0.10 * sd; g *= 1 + 0.06 * sd; b *= 1 - 0.14 * sd; }
+          const hx3 = Math.floor(eyeX + dx * ht), hy3 = Math.floor(eyeY + dy * ht), hz3 = Math.floor(eyeZ + dz * ht);
+          const ab = getB(hx3, hy3 + 1, hz3);
+          if (ab !== 0 && ab !== 5) { r *= 0.62; g *= 0.62; b *= 0.62; }
+        }
+        if (hb === 1 && HIT.face === 0) { // pasto con textura + puntitos (sin cubos)
+          const gxw = Math.floor(eyeX + dx * ht), gzw = Math.floor(eyeZ + dz * ht);
+          const hv = hash2(gxw * 3 + 1, gzw * 3 + 7);
           if (hv > 0.72) { r *= 0.86; g *= 0.93; b *= 0.86; } else if (hv < 0.22) { r *= 1.07; g *= 1.06; }
+          if (S.light > 0.4 && !uw) {
+            const fl = hash2(gxw * 5 + 9, gzw * 5 + 3);
+            if (fl > 0.986) {
+              const fc = [[232,84,109],[255,217,77],[245,245,245]][Math.floor(fl * 97) % 3];
+              r = fc[0] * S.light; g = fc[1] * S.light; b = fc[2] * S.light;
+            }
+          }
         }
         if (uw) { r = r * 0.4 + 10; g = g * 0.6 + 40; b = b * 0.8 + 70; }
-        if (HIT.w) {
+        if (HIT.w) { // agua + brillo del sol/luna temblando
           const k = 0.55;
           r += (70 * S.light - r) * k; g += (160 * S.light - g) * k; b += (220 * S.light - b) * k;
+          const sdir = S.sun || S.moon;
+          if (sdir && !uw) {
+            const wx = eyeX + dx * HIT.w.t, wz = eyeZ + dz * HIT.w.t;
+            const wo = (hash2(Math.floor(wx * 2 + T * 3), Math.floor(wz * 2)) - 0.5) * 0.35;
+            const spk = Math.pow(Math.max(0, dx * sdir[0] + (-dy + wo) * sdir[1] + dz * sdir[2]), 24) * (S.sun ? 0.85 : 0.4);
+            if (spk > 0) { r = Math.min(255, r + 255 * spk); g = Math.min(255, g + 240 * spk); b = Math.min(255, b + 200 * spk); }
+          }
         }
-        if (glowOn && ht < 16) {
+        if (glowOn && ht < 16) { // halo cálido apretado en faroles (ya no lucesotas)
           const hx2 = eyeX + dx * ht, hy2 = eyeY + dy * ht, hz2 = eyeZ + dz * ht;
           let gl = 0;
           for (let li2 = 0; li2 < LAMPS.length; li2++) {
             const L = LAMPS[li2];
-            const ax = hx2 - L[0]; if (ax > 9 || ax < -9) continue;
-            const ay = hy2 - L[1]; if (ay > 9 || ay < -9) continue;
-            const az = hz2 - L[2]; if (az > 9 || az < -9) continue;
-            const gg = (1 - Math.sqrt(ax * ax + ay * ay + az * az) / 9) * 0.55;
+            const ax = hx2 - L[0]; if (ax > 6 || ax < -6) continue;
+            const ay = hy2 - L[1]; if (ay > 6 || ay < -6) continue;
+            const az = hz2 - L[2]; if (az > 6 || az < -6) continue;
+            const dd = Math.sqrt(ax * ax + ay * ay + az * az) / 6;
+            const gg = (1 - dd) * (1 - dd) * 0.6;
             if (gg > gl) gl = gg;
           }
-          if (gl > 0) { r += (255 - r) * gl * 0.7; g += (200 - g) * gl * 0.7; b += (120 - b) * gl * 0.7; }
+          if (gl > 0) { r += (255 - r) * gl * 0.7; g += (180 - g) * gl * 0.7; b += (80 - b) * gl * 0.7; }
         }
         const f2 = 1 - Math.exp(-ht * fogK);
         r += (fogC[0] - r) * f2; g += (fogC[1] - g) * f2; b += (fogC[2] - b) * f2;
@@ -352,6 +395,47 @@ function render(dt) {
     }
   }
   bctx.putImageData(img, 0, 0);
+  // --- partículas proyectadas ---
+  const fx0 = -cp * sy, fy0 = sp, fz0 = -cp * cy;
+  const ux0 = sy * sp, uy0 = cp, uz0 = cy * sp;
+  for (let i = PARTS.length - 1; i >= 0; i--) {
+    const P2 = PARTS[i];
+    P2.life -= dt;
+    if (P2.life <= 0) { PARTS.splice(i, 1); continue; }
+    P2.x += P2.vx * dt; P2.y += P2.vy * dt; P2.z += P2.vz * dt;
+    if (P2.c === 2) P2.x += Math.sin(T * 3 + P2.z) * dt * 0.6; // hojas a la deriva
+    const rx = P2.x - eyeX, ry = P2.y - eyeY, rz = P2.z - eyeZ;
+    const cxp = rx * fx0 + ry * fy0 + rz * fz0;
+    if (cxp < 0.6) continue;
+    const up2 = rx * ux0 + ry * uy0 + rz * uz0;
+    const sxp = Math.floor((rx * cy + rz * -sy) / (cxp * tanH) * 0.5 * BW + BW / 2);
+    const syp = Math.floor(BH / 2 - up2 / (cxp * tanV) * 0.5 * BH);
+    if (sxp < 0 || syp < 0 || sxp >= BW || syp >= BH) continue;
+    if (P2.c === 1 && Math.sin(T * 6 + P2.x * 3 + P2.z * 2) <= 0) continue; // luciérnagas parpadean
+    bctx.fillStyle = PCOL[P2.c];
+    bctx.fillRect(sxp, syp, P2.c === 3 ? 2 : 1, 1);
+  }
+  // --- emisores ---
+  for (let li3 = 0; li3 < LAMPS.length; li3++) {
+    const L = LAMPS[li3];
+    const ex = L[0] - eyeX, ey = L[1] - eyeY, ez = L[2] - eyeZ;
+    if (ex * ex + ey * ey + ez * ez > 625) continue;
+    if (Math.random() < dt * 8) spawnP(L[0] + (Math.random() - 0.5) * 0.5, L[1], L[2] + (Math.random() - 0.5) * 0.5,
+      (Math.random() - 0.5) * 0.3, 0.5 + Math.random() * 0.5, (Math.random() - 0.5) * 0.3, 0.8, 0);
+  }
+  if (night && PARTS.length < 100 && Math.random() < dt * 20) // luciérnagas
+    spawnP(eyeX + (Math.random() - 0.5) * 36, eyeY - 1 + Math.random() * 3, eyeZ + (Math.random() - 0.5) * 36,
+      (Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.2, (Math.random() - 0.5) * 0.5, 4, 1);
+  if (day && PARTS.length < 100 && Math.random() < dt * 10) // hojas al viento
+    spawnP(eyeX + (Math.random() - 0.5) * 28, eyeY + 2 + Math.random() * 4, eyeZ + (Math.random() - 0.5) * 28,
+      (Math.random() - 0.5) * 0.6, -0.5 - Math.random() * 0.4, (Math.random() - 0.5) * 0.6, 5, 2);
+  for (let si = 0; si < SMOKE.length; si++) { // humo de chimeneas
+    const E2 = SMOKE[si];
+    const ex = E2[0] - eyeX, ey = E2[1] - eyeY, ez = E2[2] - eyeZ;
+    if (ex * ex + ey * ey + ez * ez > 1600) continue;
+    if (Math.random() < dt * 5) spawnP(E2[0], E2[1], E2[2],
+      (Math.random() - 0.5) * 0.3, 0.8 + Math.random() * 0.4, (Math.random() - 0.5) * 0.3, 2.2, 3);
+  }
   ctx.imageSmoothingEnabled = false;
   ctx.clearRect(0, 0, cv.width, cv.height);
   ctx.drawImage(buf, 0, 0, cv.width, cv.height);
@@ -376,7 +460,6 @@ function moveY(dy) {
   }
   if (vy !== 0) grounded = false;
 }
-
 // ================= LOOP =================
 const fpsEl = document.getElementById("fps"), posEl = document.getElementById("pos");
 const overlay = document.getElementById("overlay");
@@ -397,8 +480,8 @@ function loop(now) {
   const fw = (keys["w"] || keys["arrowup"] ? 1 : 0) - (keys["s"] || keys["arrowdown"] ? 1 : 0);
   const st = (keys["d"] ? 1 : 0) - (keys["a"] ? 1 : 0);
   const sy2 = Math.sin(yaw), cy2 = Math.cos(yaw);
-  const fxw = -sy2, fzw = -cy2; // forward (yaw=0 -> -z, igual que el renderer)
-  const rX = cy2, rZ = -sy2;    // right (yaw=0 -> +x)
+  const fxw = -sy2, fzw = -cy2;
+  const rX = cy2, rZ = -sy2;
   const dx = (fxw * fw + rX * st) * sp * dt;
   const dz = (fzw * fw + rZ * st) * sp * dt;
   if (!collideAt(px + dx, py, pz)) px += dx;
